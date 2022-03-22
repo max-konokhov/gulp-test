@@ -19,40 +19,83 @@ const browserSync = require('browser-sync').create();
 // import htmlMin from 'gulp-htmlmin';
 
 
-const clean = () => {
+
+// Функция удаления папки dev
+const cleanDev = () => {
+  return del('dev')
+};
+
+// Функция удаления папки build
+const cleanBuild = () => {
   return del('build')
 };
 
+
+// Функция копирования ресурсов в dev (для Build - не нужно)
 const resources = () => {
   return src('src/resources/**')
-    .pipe(dest('build'))
+    .pipe(dest('dev'))
 };
 
-const styles = () => {
+// Функция преобразования стилей DEV:
+const stylesDev = () => {
   return src('src/styles/**/*.css')
-    .pipe(sourcemaps.init())
-    .pipe(concat('main.css'))
-    .pipe(autoprefixes({
+    .pipe(sourcemaps.init())       //инициализация sourcemap
+    .pipe(concat('main.css'))      //конкатенация файлов стилей в один
+    .pipe(sourcemaps.write())      //запись sourcemap в конечный файл стилей.
+    .pipe(dest('dev'))             //копирование файла стилей в папку сборки build
+    .pipe(browserSync.stream())    //получение измененений файлов для BS
+};
+
+// Функция преобразования стилей Build:
+const stylesBuild = () => {
+  return src('src/styles/**/*.css')
+    .pipe(concat('main.css'))      //конкатенация файлов стилей в один
+    .pipe(autoprefixes({           //автопрефиксер конечного файла стилей
       cascade: false
     }))
-    .pipe(cleanCSS({
+    .pipe(cleanCSS({               //очистка конечного файла стилей
       level: 2
     }))
-    .pipe(sourcemaps.write())
-    .pipe(dest('build'))
-    .pipe(browserSync.stream())
+    .pipe(dest('build'))           //копирование файла стилей в папку сборки dev
+    .pipe(browserSync.stream())    //получение измененений файлов для BS
 };
 
-const htmlMinify = () => {
+
+
+//Копирование html-файлов в исходном виде для DEV:
+const htmlCopyDev = () => {
   return src('src/**/*.html')
-    .pipe(htmlMin({
+    .pipe(dest('dev'))            //копирование
+    .pipe(browserSync.stream())   //получение измененений файлов для BS
+};
+
+//Функция минификации html-файлов для build:
+const htmlMinifyBuild = () => {
+  return src('src/**/*.html')
+    .pipe(htmlMin({               //минификация
       collapseWhitespace: true,
     }))
-    .pipe(dest('build'))
-    .pipe(browserSync.stream())
+    .pipe(dest('build'))          //копирование
+    .pipe(browserSync.stream())   //получение измененений файлов для BS
 };
 
-const svgSprites = () => {
+
+//Функция сборщика единого svg-спрайта для dev:
+const svgSpritesDev = () => {
+  return src('src/images/svg/**/*.svg')
+    .pipe(svgSprite({
+      mode: {
+        stack: {
+          sprite: '../sprite.svg'
+        }
+      }
+    }))
+    .pipe(dest('dev/images'))
+}
+
+//Функция сборщика единого svg-спрайта для build:
+const svgSpritesBuild = () => {
   return src('src/images/svg/**/*.svg')
     .pipe(svgSprite({
       mode: {
@@ -64,8 +107,38 @@ const svgSprites = () => {
     .pipe(dest('build/images'))
 }
 
+// Функция преобразования скриптов для Dev:
+const scriptsDev = () => {
+  return src([
+      'src/js/components/**/*.js',
+      'src/js/main.js'
+    ])
+    .pipe(sourcemaps.init())
+    .pipe(concat('app.js'))
+    .pipe(sourcemaps.write())
+    .pipe(dest('dev'))
+    .pipe(browserSync.stream())
+}
 
-  // ТАSК IMAGES - НЕ РАБОТАЕТ
+// Функция преобразования скриптов для Build:
+const scriptsBuild = () => {
+  return src([
+      'src/js/components/**/*.js',
+      'src/js/main.js'
+    ])
+    .pipe(babel({
+      presets: ['@babel/env']
+    }))
+    .pipe(concat('app.js'))
+    .pipe(uglify({
+      toplevel: true
+    }).on('error', notify.onError()))
+    
+    .pipe(dest('build'))
+    .pipe(browserSync.stream())
+}
+
+// ФУНКЦИЯ IMAGES - НЕ РАБОТАЕТ
 
 // const images = () => {
 //   return src([
@@ -95,27 +168,15 @@ const svgSprites = () => {
 
 // gulp.task('default', ['image']);
 
+const watchFilesDev = () => {
+  browserSync.init({
+    server: {
+      baseDir: 'dev'
+    }
+  })
+};
 
-const scripts = () => {
-  return src([
-      'src/js/components/**/*.js',
-      'src/js/main.js'
-    ])
-    .pipe(sourcemaps.init())
-    .pipe(babel({
-      presets: ['@babel/env']
-    }))
-    .pipe(concat('app.js'))
-    .pipe(uglify({
-      toplevel: true
-    }).on('error', notify.onError()))
-    .pipe(sourcemaps.write())
-    .pipe(dest('build'))
-    .pipe(browserSync.stream())
-}
-
-
-const watchFiles = () => {
+const watchFilesBuild = () => {
   browserSync.init({
     server: {
       baseDir: 'build'
@@ -124,18 +185,65 @@ const watchFiles = () => {
 };
 
 
+watch('src/**/*.html', htmlCopyDev);
+watch('src/**/*.html', htmlMinifyBuild);
 
-watch('src/**/*.html', htmlMinify);
-watch('src/styles/**/*.css', styles);
-watch('src/images/svg/**/*.svg', svgSprites);
-watch('src/js/**/*.js', scripts);
+watch('src/styles/**/*.css', stylesDev);
+watch('src/styles/**/*.css', stylesBuild);
+
+watch('src/images/svg/**/*.svg', svgSpritesDev);
+watch('src/images/svg/**/*.svg', svgSpritesBuild);
+
+watch('src/js/**/*.js', scriptsDev);
+watch('src/js/**/*.js', scriptsBuild);
+
 watch('src/resources/**', resources);
+watch('src/**/*.html', htmlCopyDev);
 
 
-
-exports.clean = clean;
-exports.styles = styles;
-exports.htmlMinify = htmlMinify;
-exports.scripts = scripts;
+// ТАСКИ
+exports.cleanDev = cleanDev;
+exports.cleanBuild = cleanBuild;
+exports.stylesDev = stylesDev;
+exports.stylesBuild = stylesBuild;
+exports.resources = resources;
+exports.htmlCopyDev = htmlCopyDev;
+exports.htmlMinifyBuild = htmlMinifyBuild;
+exports.svgSpritesDev = svgSpritesDev;
+exports.svgSpritesBuild = svgSpritesBuild;
+exports.scriptsDev = scriptsDev;
+exports.scriptsBuild = scriptsBuild;
 // exports.images = images;
-exports.default = series(clean, resources, htmlMinify, scripts, styles, svgSprites, watchFiles);
+
+// Единый ТАСК
+exports.default = series(cleanDev, cleanBuild, resources, htmlCopyDev, htmlMinifyBuild, scriptsDev, stylesDev, scriptsBuild, stylesBuild, svgSpritesDev, svgSpritesBuild, watchFilesDev, watchFilesBuild);
+
+// Dev ТАСК
+//  ФУНКЦИИ ДЛЯ СБОРКИ "--DEV--"
+
+// 1. Удаление папки dev
+// 2. Копирование ресурсов в папку dev
+// 3  Копирования html-файлов без преобразования
+// 4. Копирование скриптов без преобразования (только конкатенация в один) + добавление карты источников
+// 5. Копирование стилей без преобразования (только конкатенация в один) + добавление карты источников
+// 6. Объединение всех спрайтов в один и его копирование в сборку dev
+// 7. Запуск функции слежения за изменениями
+exports.dev = series(cleanDev, resources, htmlCopyDev, scriptsDev, stylesDev, svgSpritesDev, watchFilesDev,);
+
+
+//Build ТАСК
+//  ФУНКЦИИ ДЛЯ СБОРКИ "--BUILD--"
+
+// 1. Удаление папки BUILD
+// 2. Копирование ресурсов в папку build
+// 3  Минификация html- файлов и копирование в папку build
+// 4. Преобразование скриптов (конкатенация, сжатие, обфускация), копирование в сборку БЕЗ КАРТ ИСТОЧНИКОВ 
+// 5. Преобразование стилей (конкатеннация, автопрефиксер, очищение), копирование в сборку БЕЗ КАРТ ИСТОЧНИКОВ
+// 6. Объединение всех спрайтов в один и его копирование в сборку
+// 7. Запуск функции слежения за изменениями
+exports.build = series( cleanBuild, htmlMinifyBuild, scriptsBuild, stylesBuild, svgSpritesBuild, watchFilesBuild);
+
+
+
+
+
